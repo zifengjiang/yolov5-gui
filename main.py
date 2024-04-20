@@ -1,6 +1,6 @@
 from functools import lru_cache
 
-from PyQt5 import QtWidgets
+from PyQt5 import QtWidgets, QtGui
 from PyQt5.QtWidgets import QWidget, QLabel, QMainWindow, QHBoxLayout, QRadioButton, QComboBox
 
 from LineWidget import LineWidget
@@ -114,7 +114,8 @@ class MainWindow(QMainWindow):
         self.setFixedSize(450, 500)
 
     def generate_run_command(self):
-        env_path = self.envs[self.conda_env_combobox.currentIndex()][1] + '/bin/python'
+        plus = '/bin/python' if sys.platform == 'darwin' else '/python.exe'
+        env_path = self.envs[self.conda_env_combobox.currentIndex()][1] + plus
         train_script_path = self.train_py_line.line_edit.text()
 
         run_command = '%s %s --data %s --cfg %s --weights %s --batch-size %s --epochs %s --img-size %s --patience %s --device %s %s' % (
@@ -202,6 +203,7 @@ def get_all_conda_envs():
 
 def main():
     app = QtWidgets.QApplication(sys.argv)
+    app.setWindowIcon(QtGui.QIcon('icons/app.png'))
     window = MainWindow()
     window.show()
     sys.exit(app.exec_())
