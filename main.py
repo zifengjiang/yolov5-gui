@@ -1,12 +1,15 @@
-import sys
+from functools import lru_cache
 
-from PyQt5 import QtCore, QtGui, QtWidgets
-from PyQt5.QtWidgets import QWidget, QLabel, QMainWindow, QLineEdit, QHBoxLayout, QRadioButton
+from PyQt5 import QtWidgets
+from PyQt5.QtWidgets import QWidget, QLabel, QMainWindow, QHBoxLayout, QRadioButton, QComboBox
 
-from model_size_selector import ModelSizeSelector
-from collections import namedtuple
 from LineWidget import LineWidget
+from model_size_selector import ModelSizeSelector
 from settings import Settings
+import subprocess
+import os
+import sys
+import tempfile
 
 
 class MainWindow(QMainWindow):
@@ -20,13 +23,32 @@ class MainWindow(QMainWindow):
                                          "YoloV5 Model Config (%s)" % ' '.join(['*.yaml']))
         self.pretrained_line = LineWidget('预训练模型路径', self.settings.get('pretrained_model_path'),
                                           "YoloV5 Pretrained Model (%s)" % ' '.join(['*.pt']))
+        self.train_py_line = LineWidget('训练脚本路径', self.settings.get('train_script_path'),
+                                        "Python Script (%s)" % ' '.join(['*.py']))
+        # 创建一个横向布局，左边是文本，右边是一个下拉框，用于选择Conda环境
+        self.conda_env_combobox = QComboBox(self)
+        # 获取所有Conda环境
+        self.envs = get_all_conda_envs()
+        if self.envs:
+            for env in self.envs:
+                self.conda_env_combobox.addItem(env[0])
+        conda_env_hbox = QHBoxLayout()
+        conda_env_hbox.addWidget(QLabel('Conda环境'))
+        conda_env_hbox.addWidget(self.conda_env_combobox)
+        self.conda_env_line = QWidget()
+        self.conda_env_line.setLayout(conda_env_hbox)
+        self.conda_env_line.setFixedHeight(40)
+        self.conda_env_combobox.setCurrentText(self.settings.get('conda_env_name'))
         self.data_line.line_edit.setText(self.settings.get('data_config_path'))
         self.model_cfg_line.line_edit.setText(self.settings.get('model_config_path'))
         self.pretrained_line.line_edit.setText(self.settings.get('pretrained_model_path'))
+        self.train_py_line.line_edit.setText(self.settings.get('train_script_path'))
         layout = QtWidgets.QVBoxLayout()
         layout.addWidget(self.pretrained_line)
         layout.addWidget(self.data_line)
         layout.addWidget(self.model_cfg_line)
+        layout.addWidget(self.train_py_line)
+        layout.addWidget(self.conda_env_line)
 
         layout.setSpacing(10)
 
@@ -80,21 +102,32 @@ class MainWindow(QMainWindow):
         run_command_layout.addWidget(self.run_command_line)
         run_command_generate_button = QtWidgets.QPushButton('生成运行命令')
         run_command_generate_button.clicked.connect(self.generate_run_command)
+        start_training_button = QtWidgets.QPushButton('开始训练')
+        start_training_button.clicked.connect(self.start_training)
         run_command_layout.addWidget(run_command_generate_button)
+        run_command_layout.addWidget(start_training_button)
         layout.addLayout(run_command_layout)
         widget = QWidget()
         widget.setLayout(layout)
         self.setCentralWidget(widget)
         self.setWindowTitle('YOLOv5训练工具')
-        self.setFixedSize(450, 400)
+        self.setFixedSize(450, 500)
 
     def generate_run_command(self):
-        run_command = 'python train.py --data %s --cfg %s --weights %s --batch-size %s --epochs %s --img-size %s --patience %s --device %s %s' % (
-            self.data_line.line_edit.text(), self.model_cfg_line.line_edit.text(),
+        env_path = self.envs[self.conda_env_combobox.currentIndex()][1] + '/bin/python'
+        train_script_path = self.train_py_line.line_edit.text()
+
+        run_command = '%s %s --data %s --cfg %s --weights %s --batch-size %s --epochs %s --img-size %s --patience %s --device %s %s' % (
+            env_path, train_script_path, self.data_line.line_edit.text(),
+            self.model_cfg_line.line_edit.text(),
             self.pretrained_line.line_edit.text(),
             self.batch_size_line.text(), self.epochs_line.text(), self.img_size_line.text(), self.patience_line.text(),
             '0' if self.use_gpu_button.isChecked() else 'cpu', '' if self.not_resume_button.isChecked() else '--resume')
         self.run_command_line.setText(run_command)
+
+    def start_training(self):
+        self.generate_run_command()
+        run_in_terminal(self.run_command_line.text())
 
     def closeEvent(self, a0):
         self.settings['data_config_path'] = self.data_line.line_edit.text()
@@ -106,7 +139,66 @@ class MainWindow(QMainWindow):
         self.settings['patience'] = self.patience_line.text()
         self.settings['resume'] = self.not_resume_button.isChecked()
         self.settings['device'] = self.use_gpu_button.isChecked()
+        self.settings['conda_env_name'] = self.conda_env_combobox.currentText()
+        self.settings['train_script_path'] = self.train_py_line.line_edit.text()
         self.settings.save()
+
+
+def run_in_terminal(command):
+    # 在macOS中
+    if sys.platform == 'darwin':
+        with tempfile.NamedTemporaryFile('w', delete=False, suffix='.sh') as f:
+            f.write('#!/bin/bash\n')
+            f.write(command + '\n')
+        os.chmod(f.name, 0o700)
+        subprocess.Popen(['open', '-a', 'Terminal.app', f.name])
+    # 在Windows中
+    elif sys.platform == 'win32':
+        subprocess.Popen(['start', 'cmd', '/k', command], shell=True)
+    # 在Linux中（需要xterm）
+    elif 'linux' in sys.platform:
+        subprocess.Popen(['xterm', '-e', command])
+    else:
+        print("Unsupported platform")
+
+
+@lru_cache(maxsize=5)
+def get_conda_env_python_path(env_name):
+    try:
+        print('1111')
+        # 使用conda命令行接口获取环境信息
+        result = subprocess.run(['conda', 'env', 'list'], stdout=subprocess.PIPE, check=True)
+        # 解析结果
+        lines = result.stdout.decode().split('\n')
+        for line in lines:
+            if line.startswith('#'):
+                continue
+            parts = line.split()
+            if len(parts) >= 2 and parts[0] == env_name:
+                return parts[-1] + '/bin/python'
+    except Exception as e:
+        print(f"Error while getting conda env python path: {e}")
+    return None
+
+
+def get_all_conda_envs():
+    try:
+        # 使用conda命令行接口获取环境信息
+        result = subprocess.run(['conda', 'env', 'list'], stdout=subprocess.PIPE, check=True)
+        # 解析结果
+        lines = result.stdout.decode().split('\n')
+        envs = []
+        for line in lines:
+            if line.startswith('#'):
+                continue
+            parts = line.split()
+            if len(parts) >= 2:
+                envs.append([parts[0], parts[-1]])
+        return envs
+    except Exception as e:
+        print(f"Error while getting conda envs: {e}")
+    return None
+
 
 def main():
     app = QtWidgets.QApplication(sys.argv)
