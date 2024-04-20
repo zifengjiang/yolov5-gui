@@ -129,7 +129,7 @@ class MainWindow(QMainWindow):
 
     def start_training(self):
         self.generate_run_command()
-        run_in_terminal(self.run_command_line.text())
+        self.run_in_terminal(self.run_command_line.text())
 
     def closeEvent(self, a0):
         self.settings['data_config_path'] = self.data_line.line_edit.text()
@@ -146,22 +146,25 @@ class MainWindow(QMainWindow):
         self.settings.save()
 
 
-def run_in_terminal(command):
-    # 在macOS中
-    if sys.platform == 'darwin':
-        with tempfile.NamedTemporaryFile('w', delete=False, suffix='.sh') as f:
-            f.write('#!/bin/bash\n')
-            f.write(command + '\n')
-        os.chmod(f.name, 0o700)
-        subprocess.Popen(['open', '-a', 'Terminal.app', f.name])
-    # 在Windows中
-    elif sys.platform == 'win32':
-        subprocess.Popen(['start', 'cmd', '/k', command], shell=True)
-    # 在Linux中（需要xterm）
-    elif 'linux' in sys.platform:
-        subprocess.Popen(['xterm', '-e', command])
-    else:
-        print("Unsupported platform")
+    def run_in_terminal(self,command):
+        # 获取脚本所在的目录
+        script_dir = os.path.dirname(self.train_py_line.line_edit.text())
+        # 在macOS中
+        if sys.platform == 'darwin':
+            with tempfile.NamedTemporaryFile('w', delete=False, suffix='.sh') as f:
+                f.write('#!/bin/bash\n')
+                f.write('cd ' + script_dir + '\n')  # 切换到脚本所在的目录
+                f.write(command + '\n')
+            os.chmod(f.name, 0o700)
+            subprocess.Popen(['open', '-a', 'Terminal.app', f.name])
+        # 在Windows中
+        elif sys.platform == 'win32':
+            subprocess.Popen(['start', 'cmd', '/k', 'cd /d ' + script_dir + ' && ' + command], shell=True)
+        # 在Linux中（需要xterm）
+        elif 'linux' in sys.platform:
+            subprocess.Popen(['xterm', '-e', 'cd ' + script_dir + ' && ' + command])
+        else:
+            print("Unsupported platform")
 
 
 @lru_cache(maxsize=5)
@@ -185,8 +188,8 @@ def get_conda_env_python_path(env_name):
 
 def get_all_conda_envs():
     try:
-        # 使用shell脚本获取环境信息
-        result = subprocess.run(['bash', 'get_conda_envs.sh'], stdout=subprocess.PIPE, check=True)
+        # 使用批处理脚本获取环境信息
+        result = subprocess.run(['cmd', '/c', 'get_conda_envs.bat'], stdout=subprocess.PIPE, check=True)
         # 解析结果
         lines = result.stdout.decode().split('\n')
         envs = []
