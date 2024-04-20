@@ -1,7 +1,7 @@
 from functools import lru_cache
 
 from PyQt5 import QtWidgets, QtGui
-from PyQt5.QtWidgets import QWidget, QLabel, QMainWindow, QHBoxLayout, QRadioButton, QComboBox
+from PyQt5.QtWidgets import QWidget, QLabel, QMainWindow, QHBoxLayout, QRadioButton, QComboBox, QLineEdit
 
 from libs.LineWidget import LineWidget
 from libs.model_size_selector import ModelSizeSelector
@@ -26,6 +26,7 @@ class MainWindow(QMainWindow):
                                           "YoloV5 Pretrained Model (%s)" % ' '.join(['*.pt']))
         self.train_py_line = LineWidget('训练脚本路径', self.settings.get('train_script_path'),
                                         "Python Script (%s)" % ' '.join(['*.py']))
+        self.save_dir_line = LineWidget('训练结果保存路径', self.settings.get('save_dir', os.path.expanduser('~')))
         # 创建一个横向布局，左边是文本，右边是一个下拉框，用于选择Conda环境
         self.conda_env_combobox = QComboBox(self)
         # 获取所有Conda环境
@@ -37,19 +38,47 @@ class MainWindow(QMainWindow):
         conda_env_hbox.addWidget(QLabel('Conda环境'))
         conda_env_hbox.addWidget(self.conda_env_combobox)
         self.conda_env_line = QWidget()
+        conda_env_hbox.setAlignment(QtCore.Qt.AlignLeft)
         self.conda_env_line.setLayout(conda_env_hbox)
+        
+        name_hbox = QHBoxLayout()
+        name_hbox.addWidget(QLabel('项目名称'))
+        self.name_line_edit = QLineEdit()
+        self.name_line = QWidget()
+        name_hbox.addWidget(self.name_line_edit)
+        self.name_line.setLayout(name_hbox)
+        self.name_line.setFixedHeight(40)
+       
+        conda_name_hbox = QHBoxLayout()
+        conda_env_hbox.addWidget(self.conda_env_line)
+        conda_env_hbox.addWidget(self.name_line)
+        conda_env_hbox.setAlignment(QtCore.Qt.AlignmentFlag.AlignTrailing)
+
+        self.name_line_edit.setText(self.settings.get('project_name', 'yolov5_project'))
+
+        self.conda_env_line.setFixedHeight(40)
+
+        self.conda_name_line = QWidget()
+        
+        self.conda_name_line.setLayout(conda_env_hbox)
+
+
         self.conda_env_line.setFixedHeight(40)
         self.conda_env_combobox.setCurrentText(self.settings.get('conda_env_name'))
         self.data_line.line_edit.setText(self.settings.get('data_config_path'))
         self.model_cfg_line.line_edit.setText(self.settings.get('model_config_path'))
         self.pretrained_line.line_edit.setText(self.settings.get('pretrained_model_path'))
         self.train_py_line.line_edit.setText(self.settings.get('train_script_path'))
+        self.save_dir_line.line_edit.setText(self.settings.get('save_dir', os.path.expanduser('~')))
         layout = QtWidgets.QVBoxLayout()
         layout.addWidget(self.pretrained_line)
         layout.addWidget(self.data_line)
         layout.addWidget(self.model_cfg_line)
         layout.addWidget(self.train_py_line)
-        layout.addWidget(self.conda_env_line)
+        layout.addWidget(self.save_dir_line)
+
+        layout.addWidget(self.conda_name_line)
+        
 
         layout.setSpacing(10)
 
@@ -112,19 +141,20 @@ class MainWindow(QMainWindow):
         widget.setLayout(layout)
         self.setCentralWidget(widget)
         self.setWindowTitle('YOLOv5训练工具')
-        self.setFixedSize(450, 500)
+        self.setFixedSize(450, 540)
+        self.generate_run_command()
 
     def generate_run_command(self):
         plus = '/bin/python' if sys.platform == 'darwin' else '/python.exe'
         env_path = self.envs[self.conda_env_combobox.currentIndex()][1] + plus
         train_script_path = self.train_py_line.line_edit.text()
 
-        run_command = '%s %s --data %s --cfg %s --weights %s --batch-size %s --epochs %s --img-size %s --patience %s --device %s %s' % (
+        run_command = '%s %s --data %s --cfg %s --weights %s --batch-size %s --epochs %s --img-size %s --patience %s --device %s %s --project %s --name %s' % (
             env_path, train_script_path, self.data_line.line_edit.text(),
             self.model_cfg_line.line_edit.text(),
             self.pretrained_line.line_edit.text(),
             self.batch_size_line.text(), self.epochs_line.text(), self.img_size_line.text(), self.patience_line.text(),
-            '0' if self.use_gpu_button.isChecked() else 'cpu', '' if self.not_resume_button.isChecked() else '--resume')
+            '0' if self.use_gpu_button.isChecked() else 'cpu', '' if self.not_resume_button.isChecked() else '--resume',self.save_dir_line.line_edit.text(),self.name_line_edit.text())
         self.run_command_line.setText(run_command)
 
     def start_training(self):
@@ -143,6 +173,8 @@ class MainWindow(QMainWindow):
         self.settings['device'] = self.use_gpu_button.isChecked()
         self.settings['conda_env_name'] = self.conda_env_combobox.currentText()
         self.settings['train_script_path'] = self.train_py_line.line_edit.text()
+        self.settings['save_dir'] = self.save_dir_line.line_edit.text()
+        self.settings['project_name'] = self.name_line_edit.text()
         self.settings.save()
 
 
