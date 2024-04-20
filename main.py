@@ -3,9 +3,10 @@ from functools import lru_cache
 from PyQt5 import QtWidgets, QtGui
 from PyQt5.QtWidgets import QWidget, QLabel, QMainWindow, QHBoxLayout, QRadioButton, QComboBox
 
-from LineWidget import LineWidget
-from model_size_selector import ModelSizeSelector
-from settings import Settings
+from libs.LineWidget import LineWidget
+from libs.model_size_selector import ModelSizeSelector
+from libs.settings import Settings
+from libs.resources import *
 import subprocess
 import os
 import sys
@@ -203,7 +204,7 @@ def get_all_conda_envs():
 
 def main():
     app = QtWidgets.QApplication(sys.argv)
-    app.setWindowIcon(QtGui.QIcon('icons/app.png'))
+    app.setWindowIcon(QtGui.QIcon(':/app'))
     window = MainWindow()
     window.show()
     sys.exit(app.exec_())

@@ -1,5 +1,6 @@
 from PyQt5 import QtWidgets, QtGui, QtCore
 from PyQt5.QtWidgets import QWidget, QLineEdit, QLabel
+from libs.resources import *
 
 
 class LineWidget(QWidget):
@@ -11,7 +12,7 @@ class LineWidget(QWidget):
         self.line_edit = QLineEdit(f'请选择{text}')
         self.line_edit.setReadOnly(True)
         self.button = QtWidgets.QPushButton()
-        self.button.setIcon(QtGui.QIcon('icons/folder.jpg'))
+        self.button.setIcon(QtGui.QIcon(':/folder'))
         self.button.clicked.connect(self.open_file_dialog)
         self.button.setFixedSize(30, 30)
         # 设置按钮边缘为0，背景透明
@@ -35,5 +36,6 @@ class LineWidget(QWidget):
             file_path, _ = QtWidgets.QFileDialog.getOpenFileName(self, '选择文件', self.default_path, self.filters)
         else:
             # 没有过滤器，只能选择文件夹
-            file_path = QtWidgets.QFileDialog.getExistingDirectory(self, '选择文件夹', self.default_path, QtWidgets.QFileDialog.ShowDirsOnly)
+            file_path = QtWidgets.QFileDialog.getExistingDirectory(self, '选择文件夹', self.default_path,
+                                                                   QtWidgets.QFileDialog.ShowDirsOnly)
         self.line_edit.setText(file_path)
