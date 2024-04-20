@@ -185,8 +185,8 @@ def get_conda_env_python_path(env_name):
 
 def get_all_conda_envs():
     try:
-        # 使用conda命令行接口获取环境信息
-        result = subprocess.run(['conda', 'env', 'list'], stdout=subprocess.PIPE, check=True)
+        # 使用shell脚本获取环境信息
+        result = subprocess.run(['bash', 'get_conda_envs.sh'], stdout=subprocess.PIPE, check=True)
         # 解析结果
         lines = result.stdout.decode().split('\n')
         envs = []
