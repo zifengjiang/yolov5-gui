@@ -17,10 +17,21 @@ import random
 
 import numpy as np
 from tqdm import tqdm
-names = ['电流', '当', '前', '上', '1', '8', '月', '组', '合', '正', '反', '向', '总', '尖', '峰', '平', '谷', '剩', '余', '常', '数', '1234', '电话', '房子', '阶', '梯', '透', '支', '用', '电', '量', '价', '户', '时', '间', '段', '金', '额', '表', '号', '圆形尖', '圆形峰', '圆形平', '圆形谷', '三角1', '三角2', 'L', 'N', '方块', 'COS', 'VA', '元', 'kWh', '左箭头', '圆形1', '圆形2', '电池',
-         '拨号', '锁', '读', '卡', '中', '成', '功', '失', '败', '请', '购', '拉', '闸', '囤', '积', '费', '率', 'T', '点', '象限', '无', '有', 'Ⅲ', 'V', 'A', 'B', 'C', 'O', 'S', 'fai', '需', '压', '流', '方块', 'kWAh', 'kvarh', 'Ua', 'Ub', 'Uc', '-Ia', '-Ib', '-Ic', '信号', '电话12', '报警', '缺电1', '缺电2', '逆', '相', '序', "象限", "方框1", '方框2', '方框3', '方框4', '万']
+
+names = ['电流', '当', '前', '上', '1', '8', '月', '组', '合', '正', '反', '向', '总', '尖', '峰', '平', '谷', '剩',
+         '余', '常', '数', '1234', '电话', '房子', '阶', '梯', '透', '支', '用', '电', '量', '价', '户', '时', '间',
+         '段', '金', '额', '表', '号', '圆形尖', '圆形峰', '圆形平', '圆形谷', '三角1', '三角2', 'L', 'N', '方块',
+         'COS', 'VA', '元', 'kWh', '左箭头', '圆形1', '圆形2', '电池',
+         '拨号', '锁', '读', '卡', '中', '成', '功', '失', '败', '请', '购', '拉', '闸', '囤', '积', '费', '率', 'T',
+         '点', '象限', '无', '有', 'Ⅲ', 'V', 'A', 'B', 'C', 'O', 'S', 'fai', '需', '压', '流', '方块', 'kWAh', 'kvarh',
+         'Ua', 'Ub', 'Uc', '-Ia', '-Ib', '-Ic', '信号', '电话12', '报警', '缺电1', '缺电2', '逆', '相', '序', "象限",
+         "方框1", '方框2', '方框3', '方框4', '万']
 selected = ['当', '前', '上', '月', '组', '合', '正', '反', '向',
-            '总', '尖', '峰', '平', '谷', '剩', '余', '常', '数', '阶', '梯', '透', '支', '用', '电', '量', '价', '户', '时', '间', '段', '金', '额', '表', '号', '读', '卡', '中', '成', '功', '失', '败', '请', '购', '拉', '闸', '囤', '积', '逆', '相', '序','房子','电话','L','N','圆形1','圆形2','元','圆形尖', '圆形峰', '圆形平', '圆形谷', "方框1", '方框2', '方框3', '方框4', '万','fai', '需', '压', '流']
+            '总', '尖', '峰', '平', '谷', '剩', '余', '常', '数', '阶', '梯', '透', '支', '用', '电', '量', '价', '户',
+            '时', '间', '段', '金', '额', '表', '号', '读', '卡', '中', '成', '功', '失', '败', '请', '购', '拉', '闸',
+            '囤', '积', '逆', '相', '序', '房子', '电话', 'L', 'N', '圆形1', '圆形2', '元', '圆形尖', '圆形峰',
+            '圆形平', '圆形谷', "方框1", '方框2', '方框3', '方框4', '万', 'fai', '需', '压', '流']
+
 
 def shuffle_selected_classes(image_path, names=names, selected=selected):
     label_path = image_path.replace('images', 'labels').replace('.jpg', '.txt')
@@ -47,7 +58,7 @@ def shuffle_selected_classes(image_path, names=names, selected=selected):
                 cropped_img = img.crop((x1, y1, x2, y2))
                 selected_lines.append((cls, x_center, y_center, width, height))
                 new_positions_images.append(
-                    (cls,  width, height, cropped_img))
+                    (cls, width, height, cropped_img))
 
             else:
                 new_lines.append(
@@ -64,7 +75,7 @@ def shuffle_selected_classes(image_path, names=names, selected=selected):
         new_x1 = int((old_x_center - old_width / 2) * img_width)
         new_y1 = int((old_y_center - old_height / 2) * img_height)
         new_images = new_images.resize(
-            (int(img_width*old_width), int(img_height*old_height)))
+            (int(img_width * old_width), int(img_height * old_height)))
         new_img.paste(new_images, (new_x1, new_y1))
         new_lines.append(
             (cls, old_x_center, old_y_center, old_width, old_height))
@@ -81,11 +92,13 @@ def shuffle_selected_classes(image_path, names=names, selected=selected):
 
     return new_img_path
 
+
 class dataAugmentation:
-    def __init__(self, file_dir, save_dir, valid_ratio=0.2, test_ratio=0.1, increased=160):
+    def __init__(self, file_dir, save_dir, shuffle_char=True, valid_ratio=0.2, test_ratio=0.1, increased=160):
         self.file_dir = file_dir
         self.images_dir = os.path.join(self.file_dir, 'images')
         self.label_dir = os.path.join(self.file_dir, 'labels')
+        self.shuffle_char = shuffle_char
         assert os.path.exists(self.images_dir), 'make sure there is a folder named "images" which contains all images ' \
                                                 'in the file_dir '
         assert os.path.exists(
@@ -176,19 +189,19 @@ class dataAugmentation:
         self.name_cnt += 1
 
     def save_one(self, isOriginal=False):
-
         if isOriginal:
             cv.imwrite(os.path.join(self.image_path, '%d.jpg' % self.name_cnt), self.cur_original_image)
         else:
             self.do()
             cv.imwrite(os.path.join(self.image_path, '%d.jpg' % self.name_cnt), self.cur_augmented_image)
-        img_path=os.path.join(self.image_path, '%d.jpg' % self.name_cnt)
         try:
             shutil.copy(self.cur_label_file_path, os.path.join(self.label_path, '%d.txt' % self.name_cnt))
         except FileNotFoundError:
             pass
-        # shuffle_selected_classes(image_path=img_path)
-        # print(f'Image:{self.name_cnt}.jpg -> Path:{image_path} and Label:{self.name_cnt}.txt -> Path:{label_path}')
+        img_path = os.path.join(self.image_path, '%d.jpg' % self.name_cnt)
+        if self.shuffle_char:
+            shuffle_selected_classes(image_path=img_path)
+        print(f'Image:{self.name_cnt}.jpg -> Path:{img_path} and Label:{self.name_cnt}.txt -> Path:{self.label_path}')
         self.name_cnt += 1
 
     def do(self):
@@ -202,11 +215,6 @@ class dataAugmentation:
     def summary(self):
         print(f'{self.test} test data generated\n{self.valid} valid data generated\n{self.train} train data generated')
         print(f'{self.train + self.valid + self.test - self.images_count} images has been increased')
-
-
-import os
-import shutil
-from collections import defaultdict
 
 
 def merge_yolo_datasets(source_dirs, target_dir):
@@ -245,6 +253,7 @@ def merge_yolo_datasets(source_dirs, target_dir):
             print(f"Copied: {img_source} -> {img_target}")
             print(f"Copied: {lbl_source} -> {lbl_target}")
 
+
 if __name__ == "__main__":
     source_dirs = [
         r'F:\毕业论文实验\银河数据集_裁剪',
@@ -262,17 +271,12 @@ if __name__ == "__main__":
     ]
 
     # increased = [8,8,8,16*0.8,16*0.8,8,2]
-    increased = [30,1]
+    increased = [30, 1]
 
     target_dir = r'F:\毕业论文实验\粗粒度模型'  # 合并后的目标文件夹
 
     for i in range(len(source_dirs)):
-        dataAugmentation(source_dirs[i],target_dir,test_ratio=0.1,increased=increased[i])
-
-
-
-
+        dataAugmentation(source_dirs[i], target_dir, test_ratio=0.1, increased=increased[i])
 
     # merge_yolo_datasets(source_dirs, target_dir)
     # print("Dataset merging completed!")
-
