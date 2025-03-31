@@ -10,7 +10,7 @@ class LineWidget(QWidget):
         self.default_path = default_path
         self.text = QLabel(text)
         self.line_edit = QLineEdit(f'请选择{text}')
-        self.line_edit.setReadOnly(True)
+        self.line_edit.setReadOnly(False)
         self.button = QtWidgets.QPushButton()
         self.button.setIcon(QtGui.QIcon(':/folder'))
         self.button.clicked.connect(self.open_file_dialog)

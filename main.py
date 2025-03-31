@@ -19,6 +19,7 @@ from PyQt5.QtWidgets import QDialog, QVBoxLayout, QProgressBar, QMessageBox
 
 from ShuffleGroupDialog import ShuffleGroupDialog, get_yaml_keys
 from libs.check_env import LoadingDialog,check_environment
+from libs.YoloParamsDialog import YoloParamsDialog
 
 
 class MainWindow(QMainWindow):
@@ -32,8 +33,6 @@ class MainWindow(QMainWindow):
                                          "YoloV5 Model Config (%s)" % ' '.join(['*.yaml']))
         self.pretrained_line = LineWidget('预训练模型路径', self.settings.get('pretrained_model_path'),
                                           "YoloV5 Pretrained Model (%s)" % ' '.join(['*.pt']))
-        self.train_py_line = LineWidget('训练脚本路径', self.settings.get('train_script_path'),
-                                        "Python Script (%s)" % ' '.join(['*.py']))
         self.save_dir_line = LineWidget(
             '训练结果保存路径', self.settings.get('save_dir', os.path.expanduser('~')))
         # 创建一个横向布局，左边是文本，右边是一个下拉框，用于选择Conda环境
@@ -84,15 +83,12 @@ class MainWindow(QMainWindow):
             self.settings.get('model_config_path'))
         self.pretrained_line.line_edit.setText(
             self.settings.get('pretrained_model_path'))
-        self.train_py_line.line_edit.setText(
-            self.settings.get('train_script_path'))
         self.save_dir_line.line_edit.setText(
             self.settings.get('save_dir', os.path.expanduser('~')))
         layout = QtWidgets.QVBoxLayout()
         layout.addWidget(self.pretrained_line)
         layout.addWidget(self.data_line)
         layout.addWidget(self.model_cfg_line)
-        layout.addWidget(self.train_py_line)
         layout.addWidget(self.save_dir_line)
 
         layout.addWidget(self.conda_name_line)
@@ -184,6 +180,11 @@ class MainWindow(QMainWindow):
 
         # 将数据增强组添加到主布局（在训练参数组之后）
         layout.addWidget(self.aug_group)
+        
+        # 添加 YOLO 参数设置按钮
+        yolo_params_button = QtWidgets.QPushButton("设置 YOLO 参数")
+        yolo_params_button.clicked.connect(self.open_yolo_params_dialog)
+        layout.addWidget(yolo_params_button)
 
         # 运行命令框,用于显示生成的运行命令
         self.run_command_line = QtWidgets.QLineEdit()
@@ -207,21 +208,30 @@ class MainWindow(QMainWindow):
         self.generate_run_command()
 
     def generate_run_command(self):
-        plus = '/bin/python' if sys.platform == 'darwin' else '/python.exe'
-        env_path = self.envs[self.conda_env_combobox.currentIndex()][1] + plus
-        train_script_path = self.train_py_line.line_edit.text()
+        """生成 yolo train 命令"""
+        data_path = self.data_line.line_edit.text()
+        model_path = self.pretrained_line.line_edit.text()
+        save_dir = self.save_dir_line.line_edit.text()
+        epochs = self.epochs_line.text()
+        batch_size = self.batch_size_line.text()
+        img_size = self.img_size_line.text()
+        patience = self.patience_line.text()
+        resume = self.not_resume_button.isChecked()
+        device = 'cuda' if self.use_gpu_button.isChecked() else 'cpu'
 
-        run_command = '%s %s --data %s --cfg %s --weights %s --batch-size %s --epochs %s --img-size %s --patience %s --device %s %s --project %s --name %s' % (
-            env_path, train_script_path, self.data_line.line_edit.text(),
-            self.model_cfg_line.line_edit.text(),
-            self.pretrained_line.line_edit.text(),
-            self.batch_size_line.text(), self.epochs_line.text(
-            ), self.img_size_line.text(), self.patience_line.text(),
-            '0' if self.use_gpu_button.isChecked() else 'cpu', '' if self.not_resume_button.isChecked() else '--resume', self.save_dir_line.line_edit.text(), self.name_line_edit.text())
+        # 构建 yolo train 命令
+        run_command = f"yolo train data={data_path} model={model_path} epochs={epochs} batch={batch_size} imgsz={img_size} project={save_dir} name={self.name_line_edit.text()} patience={patience} resume={resume} device={device} "
         self.run_command_line.setText(run_command)
 
     def check_package(self):
         self.check_package_async()
+        
+    def open_yolo_params_dialog(self):
+        """打开 YOLO 参数设置对话框"""
+        dialog = YoloParamsDialog(self, self.settings)
+        if dialog.exec_() == QDialog.Accepted:
+            # 更新设置后重新生成命令
+            self.generate_run_command()
 
     def start_training(self):
         # 0. 如果你之前有别的校验、获取路径、生成命令等逻辑，这里都不变...
@@ -297,18 +307,17 @@ class MainWindow(QMainWindow):
         """数据增强完成后，继续后续训练流程。"""
         self.progress_bar.setValue(100)
         self.progress_bar.setFormat("数据增强完成！")
-        # 这里就可以执行后续训练命令了
-        # 比如：
+
+        # 更新数据路径为增强后的路径
         tmp = self.data_line.line_edit.text()
         save_dir = os.path.join(self.save_dir_line.line_edit.text(),
                                 self.name_line_edit.text(), "augmented_data")
         self.data_line.line_edit.setText(os.path.join(save_dir, "data.yaml"))
+
+        # 生成并运行训练命令
         self.generate_run_command()
         self.data_line.line_edit.setText(tmp)
         self.run_in_terminal(self.run_command_line.text())
-
-        # 如果有按钮需要恢复可用，也可以：
-        # start_training_button.setEnabled(True)
 
     def run_train_command(self):
         """不做数据增强时，直接执行训练。"""
@@ -335,7 +344,6 @@ class MainWindow(QMainWindow):
         self.settings['resume'] = self.not_resume_button.isChecked()
         self.settings['device'] = self.use_gpu_button.isChecked()
         self.settings['conda_env_name'] = self.conda_env_combobox.currentText()
-        self.settings['train_script_path'] = self.train_py_line.line_edit.text()
         self.settings['save_dir'] = self.save_dir_line.line_edit.text()
         self.settings['project_name'] = self.name_line_edit.text()
         self.settings['enable_aug'] = self.enable_aug_check.isChecked()
@@ -344,24 +352,16 @@ class MainWindow(QMainWindow):
         self.settings.save()
 
     def run_in_terminal(self, command):
-        # 获取脚本所在的目录
-        script_dir = os.path.dirname(self.train_py_line.line_edit.text())
-        # 在macOS中
+        """在终端中运行命令"""
+        # 在 macOS 中
         if sys.platform == 'darwin':
-            with tempfile.NamedTemporaryFile('w', delete=False, suffix='.sh') as f:
-                f.write('#!/bin/bash\n')
-                f.write('cd ' + script_dir + '\n')  # 切换到脚本所在的目录
-                f.write(command + '\n')
-            os.chmod(f.name, 0o700)
-            subprocess.Popen(['open', '-a', 'Terminal.app', f.name])
-        # 在Windows中
+            subprocess.Popen(['open', '-a', 'Terminal.app', '-e', f"{command}"], shell=True)
+        # 在 Windows 中
         elif sys.platform == 'win32':
-            subprocess.Popen(['start', 'cmd', '/k', 'cd /d ' +
-                             script_dir + ' && ' + command], shell=True)
-        # 在Linux中（需要xterm）
+            subprocess.Popen(['start', 'cmd', '/k', command], shell=True)
+        # 在 Linux 中
         elif 'linux' in sys.platform:
-            subprocess.Popen(
-                ['xterm', '-e', 'cd ' + script_dir + ' && ' + command])
+            subprocess.Popen(['xterm', '-e', command], shell=True)
         else:
             print("Unsupported platform")
 
