@@ -1,10 +1,12 @@
 from functools import lru_cache
+import random
 
 import yaml
 from PyQt5 import QtWidgets, QtGui
 from PyQt5.QtWidgets import QWidget, QLabel, QMainWindow, QHBoxLayout, QRadioButton, QComboBox, QLineEdit
 
 from libs.LineWidget import LineWidget
+from libs.dataAug import AugWorker
 from libs.model_size_selector import ModelSizeSelector
 from libs.settings import Settings
 from libs.resources import *
@@ -12,6 +14,8 @@ import subprocess
 import os
 import sys
 import tempfile
+
+from ShuffleGroupDialog import ShuffleGroupDialog, get_yaml_keys
 
 
 class MainWindow(QMainWindow):
@@ -27,7 +31,8 @@ class MainWindow(QMainWindow):
                                           "YoloV5 Pretrained Model (%s)" % ' '.join(['*.pt']))
         self.train_py_line = LineWidget('训练脚本路径', self.settings.get('train_script_path'),
                                         "Python Script (%s)" % ' '.join(['*.py']))
-        self.save_dir_line = LineWidget('训练结果保存路径', self.settings.get('save_dir', os.path.expanduser('~')))
+        self.save_dir_line = LineWidget(
+            '训练结果保存路径', self.settings.get('save_dir', os.path.expanduser('~')))
         # 创建一个横向布局，左边是文本，右边是一个下拉框，用于选择Conda环境
         self.conda_env_combobox = QComboBox(self)
         # 获取所有Conda环境
@@ -35,13 +40,14 @@ class MainWindow(QMainWindow):
         if self.envs:
             for env in self.envs:
                 self.conda_env_combobox.addItem(env[0])
+                
         conda_env_hbox = QHBoxLayout()
         conda_env_hbox.addWidget(QLabel('Conda环境'))
         conda_env_hbox.addWidget(self.conda_env_combobox)
         self.conda_env_line = QWidget()
         conda_env_hbox.setAlignment(QtCore.Qt.AlignLeft)
         self.conda_env_line.setLayout(conda_env_hbox)
-        
+
         name_hbox = QHBoxLayout()
         name_hbox.addWidget(QLabel('项目名称'))
         self.name_line_edit = QLineEdit()
@@ -49,28 +55,36 @@ class MainWindow(QMainWindow):
         name_hbox.addWidget(self.name_line_edit)
         self.name_line.setLayout(name_hbox)
         self.name_line.setFixedHeight(40)
-       
+
         conda_name_hbox = QHBoxLayout()
+        conda_name_hbox.addWidget(self.conda_env_line)
+        conda_name_hbox.addWidget(self.name_line)
+        conda_name_hbox.setAlignment(QtCore.Qt.AlignTrailing)
         conda_env_hbox.addWidget(self.conda_env_line)
         conda_env_hbox.addWidget(self.name_line)
         conda_env_hbox.setAlignment(QtCore.Qt.AlignmentFlag.AlignTrailing)
 
-        self.name_line_edit.setText(self.settings.get('project_name', 'yolov5_project'))
+        self.name_line_edit.setText(
+            self.settings.get('project_name', 'yolov5_project'))
 
         self.conda_env_line.setFixedHeight(40)
 
         self.conda_name_line = QWidget()
-        
-        self.conda_name_line.setLayout(conda_env_hbox)
 
+        self.conda_name_line.setLayout(conda_name_hbox)
 
         self.conda_env_line.setFixedHeight(40)
-        self.conda_env_combobox.setCurrentText(self.settings.get('conda_env_name'))
+        self.conda_env_combobox.setCurrentText(
+            self.settings.get('conda_env_name'))
         self.data_line.line_edit.setText(self.settings.get('data_config_path'))
-        self.model_cfg_line.line_edit.setText(self.settings.get('model_config_path'))
-        self.pretrained_line.line_edit.setText(self.settings.get('pretrained_model_path'))
-        self.train_py_line.line_edit.setText(self.settings.get('train_script_path'))
-        self.save_dir_line.line_edit.setText(self.settings.get('save_dir', os.path.expanduser('~')))
+        self.model_cfg_line.line_edit.setText(
+            self.settings.get('model_config_path'))
+        self.pretrained_line.line_edit.setText(
+            self.settings.get('pretrained_model_path'))
+        self.train_py_line.line_edit.setText(
+            self.settings.get('train_script_path'))
+        self.save_dir_line.line_edit.setText(
+            self.settings.get('save_dir', os.path.expanduser('~')))
         layout = QtWidgets.QVBoxLayout()
         layout.addWidget(self.pretrained_line)
         layout.addWidget(self.data_line)
@@ -79,16 +93,19 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.save_dir_line)
 
         layout.addWidget(self.conda_name_line)
-        
 
         layout.setSpacing(10)
 
         self.train_parm_group = QtWidgets.QGroupBox('训练参数设置')
         train_parm_layout = QtWidgets.QVBoxLayout()
-        self.batch_size_line = QtWidgets.QLineEdit(self.settings.get('batch_size', '16'))
-        self.epochs_line = QtWidgets.QLineEdit(self.settings.get('epochs', '300'))
-        self.img_size_line = QtWidgets.QLineEdit(self.settings.get('img_size', '640'))
-        self.patience_line = QtWidgets.QLineEdit(self.settings.get('patience', '100'))
+        self.batch_size_line = QtWidgets.QLineEdit(
+            self.settings.get('batch_size', '16'))
+        self.epochs_line = QtWidgets.QLineEdit(
+            self.settings.get('epochs', '300'))
+        self.img_size_line = QtWidgets.QLineEdit(
+            self.settings.get('img_size', '640'))
+        self.patience_line = QtWidgets.QLineEdit(
+            self.settings.get('patience', '100'))
         resume_layout = QHBoxLayout()
         self.not_resume_button = QRadioButton('否')
         resume_layout.addWidget(self.not_resume_button)
@@ -133,9 +150,11 @@ class MainWindow(QMainWindow):
         check_widget = QWidget()
         check_layout = QtWidgets.QHBoxLayout()
         self.enable_aug_check = QtWidgets.QCheckBox('启用数据增强')
-        self.enable_aug_check.setChecked(self.settings.get('enable_aug', False))
+        self.enable_aug_check.setChecked(
+            self.settings.get('enable_aug', False))
         self.enable_shuffle_check = QtWidgets.QCheckBox('启用字符打乱')
-        self.enable_shuffle_check.setChecked(self.settings.get('enable_shuffle',False))
+        self.enable_shuffle_check.setChecked(
+            self.settings.get('enable_shuffle', False))
         check_layout.addWidget(self.enable_aug_check)
         check_layout.addWidget(self.enable_shuffle_check)
         check_widget.setLayout(check_layout)
@@ -145,25 +164,19 @@ class MainWindow(QMainWindow):
         params_grid = QtWidgets.QGridLayout()
 
         # 增强强度
-        self.aug_strength = QtWidgets.QLineEdit(self.settings.get('aug_strength', '160'))
+        self.aug_strength = QtWidgets.QLineEdit(
+            self.settings.get('aug_strength', '160'))
         params_grid.addWidget(QLabel('增强强度'), 0, 0)
         params_grid.addWidget(self.aug_strength, 0, 1)
-
-        # 验证集比例
-        self.valid_ratio = QtWidgets.QLineEdit(self.settings.get('valid_ratio', '0.2'))
-        params_grid.addWidget(QLabel('验证集比例'), 1, 0)
-        params_grid.addWidget(self.valid_ratio, 1, 1)
-
-        # 测试集比例
-        self.test_ratio = QtWidgets.QLineEdit(self.settings.get('test_ratio', '0.1'))
-        params_grid.addWidget(QLabel('测试集比例'), 2, 0)
-        params_grid.addWidget(self.test_ratio, 2, 1)
 
         aug_layout.addLayout(params_grid)
         # 在数据增强设置的参数网格之后添加按钮
         self.shuffle_config_btn = QtWidgets.QPushButton("配置打乱分组")
         self.shuffle_config_btn.clicked.connect(self.show_shuffle_group_dialog)
         aug_layout.addWidget(self.shuffle_config_btn)
+        self.progress_bar = QtWidgets.QProgressBar()
+        aug_layout.addWidget(self.progress_bar)
+        self.progress_bar.setValue(0)  # 初始为0
         self.aug_group.setLayout(aug_layout)
 
         # 将数据增强组添加到主布局（在训练参数组之后）
@@ -185,283 +198,10 @@ class MainWindow(QMainWindow):
         widget = QWidget()
         widget.setLayout(layout)
 
-
-
-
         self.setCentralWidget(widget)
         self.setWindowTitle('YOLO训练工具')
-        self.setFixedSize(450, 640)
+        self.setFixedSize(450, 700)
         self.generate_run_command()
-
-    # 在MainWindow类中添加以下方法
-    def show_shuffle_group_dialog(self):
-        # 读取数据集配置
-        try:
-            with open(self.data_line.line_edit.text(), 'r', encoding='utf-8') as f:
-                import yaml
-                data_config = yaml.safe_load(f)
-                all_names = sorted(list(set(data_config['names'])))  # 去重排序
-        except Exception as e:
-            QtWidgets.QMessageBox.critical(self, "错误", f"读取数据集配置失败: {str(e)}")
-            return
-
-        # 加载保存的分组配置
-        saved_groups = self.settings.get('shuffle_groups', {})
-
-        # 创建配置对话框
-        dialog = QtWidgets.QDialog(self)
-        dialog.setWindowTitle("字符分组配置")
-        dialog.setMinimumSize(900, 600)
-
-        # 主布局：左侧分组管理，右侧所有字符列表
-        main_layout = QtWidgets.QHBoxLayout()
-
-        # 左侧分组面板
-        group_panel = QtWidgets.QWidget()
-        group_layout = QtWidgets.QVBoxLayout()
-
-        # 分组列表
-        self.group_widgets = []
-        group_scroll = QtWidgets.QScrollArea()
-        group_scroll.setWidgetResizable(True)
-        group_container = QtWidgets.QWidget()
-        self.group_container_layout = QtWidgets.QVBoxLayout()
-
-        # 初始化分组
-        for group_name, group_info in saved_groups.items():
-            self._add_group_ui(
-                group_container=group_container,
-                group_name=group_name,
-                color=group_info['color'],
-                members=group_info['members']
-            )
-
-        group_container.setLayout(self.group_container_layout)
-        group_scroll.setWidget(group_container)
-
-        # 添加分组按钮
-        add_group_btn = QtWidgets.QPushButton("新建分组")
-        add_group_btn.clicked.connect(lambda: self._add_group_ui(group_container))
-
-        group_layout.addWidget(add_group_btn)
-        group_layout.addWidget(group_scroll)
-        group_panel.setLayout(group_layout)
-
-        # 右侧所有字符列表
-        all_chars_panel = QtWidgets.QWidget()
-        all_chars_layout = QtWidgets.QVBoxLayout()
-
-        # 搜索框
-        search_box = QtWidgets.QLineEdit()
-        search_box.setPlaceholderText("搜索字符...")
-        all_chars_layout.addWidget(search_box)
-
-        # 字符列表
-        self.all_chars_list = QtWidgets.QListWidget()
-        self.all_chars_list.setDragDropMode(QtWidgets.QAbstractItemView.NoDragDrop)
-
-        # 填充字符
-        self.char_items = {}
-        for name in all_names:
-            item = QtWidgets.QListWidgetItem(name)
-            item.setFlags(item.flags() | QtCore.Qt.ItemIsUserCheckable)
-            item.setCheckState(QtCore.Qt.Unchecked)
-            self.all_chars_list.addItem(item)
-            self.char_items[name] = item
-
-        # 应用保存的分组颜色
-        self._update_char_colors(saved_groups)
-
-        all_chars_layout.addWidget(self.all_chars_list)
-        all_chars_panel.setLayout(all_chars_layout)
-
-        main_layout.addWidget(group_panel, 3)
-        main_layout.addWidget(all_chars_panel, 2)
-        dialog.setLayout(main_layout)
-
-        # 底部按钮
-        btn_layout = QtWidgets.QHBoxLayout()
-        save_btn = QtWidgets.QPushButton("保存")
-        save_btn.clicked.connect(lambda: self._save_groups(dialog, all_names))
-        btn_layout.addWidget(save_btn)
-
-        cancel_btn = QtWidgets.QPushButton("取消")
-        cancel_btn.clicked.connect(dialog.reject)
-        btn_layout.addWidget(cancel_btn)
-
-        main_layout.addLayout(btn_layout)
-
-        # 实时搜索
-        search_box.textChanged.connect(self._filter_chars)
-
-        dialog.exec_()
-
-    def _add_group_ui(self, group_container, group_name=None, color=None, members=None):
-        # 生成默认分组信息
-        group_name = group_name or f"分组{len(self.group_widgets) + 1}"
-        color = color or self._get_random_color()
-        members = members or []
-
-        # 分组Widget
-        group_widget = QtWidgets.QGroupBox()
-        group_layout = QtWidgets.QVBoxLayout()
-
-        # 头部：名称和颜色选择
-        header_layout = QtWidgets.QHBoxLayout()
-
-        # 颜色选择按钮
-        color_btn = QtWidgets.QPushButton()
-        color_btn.setStyleSheet(f"background-color: {color};")
-        color_btn.setFixedSize(20, 20)
-        color_btn.clicked.connect(lambda: self._change_group_color(color_btn, group_widget))
-
-        # 分组名称
-        name_edit = QtWidgets.QLineEdit(group_name)
-
-        # 删除按钮
-        del_btn = QtWidgets.QPushButton("×")
-        del_btn.setFixedSize(20, 20)
-        del_btn.clicked.connect(lambda: self._remove_group(group_widget))
-
-        header_layout.addWidget(color_btn)
-        header_layout.addWidget(name_edit)
-        header_layout.addWidget(del_btn)
-
-        # 成员列表
-        member_list = QtWidgets.QListWidget()
-        member_list.setAcceptDrops(True)
-        member_list.setDragDropMode(QtWidgets.QAbstractItemView.DropOnly)
-
-        # 初始化成员
-        for name in members:
-            item = QtWidgets.QListWidgetItem(name)
-            member_list.addItem(item)
-            if name in self.char_items:
-                self.char_items[name].setCheckState(QtCore.Qt.Checked)
-
-        # 保存分组引用
-        group_data = {
-            'widget': group_widget,
-            'color_btn': color_btn,
-            'name_edit': name_edit,
-            'member_list': member_list,
-            'color': color
-        }
-        self.group_widgets.append(group_data)
-
-        group_layout.addLayout(header_layout)
-        group_layout.addWidget(member_list)
-        group_widget.setLayout(group_layout)
-        self.group_container_layout.addWidget(group_widget)
-
-        # 设置样式
-        self._update_group_style(group_data)
-
-        # 绑定事件
-        member_list.itemChanged.connect(self._update_char_colors)
-
-    def _change_group_color(self, color_btn, group_widget):
-        color = QtWidgets.QColorDialog.getColor()
-        if color.isValid():
-            hex_color = color.name()
-            color_btn.setStyleSheet(f"background-color: {hex_color};")
-            # 更新对应分组的颜色数据
-            for group in self.group_widgets:
-                if group['widget'] == group_widget:
-                    group['color'] = hex_color
-                    self._update_group_style(group)
-                    break
-
-    def _update_group_style(self, group_data):
-        style = f"""
-        QGroupBox {{
-            border: 2px solid {group_data['color']};
-            border-radius: 5px;
-            margin-top: 1ex;
-        }}
-        QGroupBox::title {{
-            subcontrol-origin: margin;
-            left: 10px;
-            padding: 0 3px;
-        }}
-        """
-        group_data['widget'].setStyleSheet(style)
-
-    def _remove_group(self, group_widget):
-        # 放回未分组字符
-        for group in self.group_widgets:
-            if group['widget'] == group_widget:
-                while group['member_list'].count() > 0:
-                    item = group['member_list'].takeItem(0)
-                    self._return_to_ungrouped(item.text())
-                break
-
-        # 移除UI组件
-        group_widget.deleteLater()
-        self.group_widgets = [g for g in self.group_widgets if g['widget'] != group_widget]
-
-    def _return_to_ungrouped(self, name):
-        if name in self.char_items:
-            self.char_items[name].setCheckState(QtCore.Qt.Unchecked)
-
-    def _filter_chars(self, text):
-        for i in range(self.all_chars_list.count()):
-            item = self.all_chars_list.item(i)
-            item.setHidden(text.lower() not in item.text().lower())
-
-    def _save_groups(self, dialog, all_names):
-        groups = {}
-        all_used = set()
-
-        for group in self.group_widgets:
-            group_name = group['name_edit'].text().strip()
-            color = group['color']
-            members = []
-
-            # 收集成员
-            for i in range(group['member_list'].count()):
-                item = group['member_list'].item(i)
-                name = item.text()
-                if name not in all_names:
-                    continue
-                if name in all_used:
-                    QtWidgets.QMessageBox.warning(self, "错误", f"字符 '{name}' 被重复分配到多个分组！")
-                    return
-                members.append(name)
-                all_used.add(name)
-
-            if group_name and members:
-                groups[group_name] = {
-                    'color': color,
-                    'members': members
-                }
-
-        self.settings['shuffle_groups'] = groups
-        dialog.accept()
-
-    def _update_char_colors(self, groups=None):
-        # 根据当前分组状态更新字符颜色
-        color_map = {}
-        if groups:
-            # 初始化时使用保存的分组
-            for group_name, info in groups.items():
-                for name in info['members']:
-                    color_map[name] = info['color']
-        else:
-            # 运行时根据当前分组更新
-            for group in self.group_widgets:
-                color = group['color']
-                for i in range(group['member_list'].count()):
-                    name = group['member_list'].item(i).text()
-                    color_map[name] = color
-
-        for name, item in self.char_items.items():
-            color = color_map.get(name, "#FFFFFF")
-            item.setBackground(QtGui.QColor(color))
-
-    def _get_random_color(self):
-        colors = ['#FFB3BA', '#BAFFC9', '#BAE1FF', '#FFFFBA', '#FFD9BA']
-        return colors[len(self.group_widgets) % len(colors)]
 
     def generate_run_command(self):
         plus = '/bin/python' if sys.platform == 'darwin' else '/python.exe'
@@ -472,39 +212,107 @@ class MainWindow(QMainWindow):
             env_path, train_script_path, self.data_line.line_edit.text(),
             self.model_cfg_line.line_edit.text(),
             self.pretrained_line.line_edit.text(),
-            self.batch_size_line.text(), self.epochs_line.text(), self.img_size_line.text(), self.patience_line.text(),
-            '0' if self.use_gpu_button.isChecked() else 'cpu', '' if self.not_resume_button.isChecked() else '--resume',self.save_dir_line.line_edit.text(),self.name_line_edit.text())
+            self.batch_size_line.text(), self.epochs_line.text(
+            ), self.img_size_line.text(), self.patience_line.text(),
+            '0' if self.use_gpu_button.isChecked() else 'cpu', '' if self.not_resume_button.isChecked() else '--resume', self.save_dir_line.line_edit.text(), self.name_line_edit.text())
         self.run_command_line.setText(run_command)
 
     def start_training(self):
-        self.generate_run_command()
+        # 0. 如果你之前有别的校验、获取路径、生成命令等逻辑，这里都不变...
+        #    这里只演示如何把数据增强放到子线程中执行 + 进度条
 
-        # 执行数据增强
         if self.enable_aug_check.isChecked():
-            try:
-                file_dir = self.data_line.line_edit.text()
-                save_dir = os.path.join(self.save_dir_line.line_edit.text(), "augmented_data")
-
-                # 创建数据增强实例
-                from libs.dataAug import dataAugmentation  # 导入你的数据增强类
-                aug = dataAugmentation(
-                    file_dir=file_dir,
-                    save_dir=save_dir,
-                    shuffle_char=self.enable_shuffle_check.isChecked(),
-                    valid_ratio=float(self.valid_ratio.text()),
-                    test_ratio=float(self.test_ratio.text()),
-                    increased=int(self.aug_strength.text())
+            # 1) 创建并配置 dataAugmentation 对象
+            file_dir = self.data_line.line_edit.text()
+            save_dir = os.path.join(
+                self.save_dir_line.line_edit.text(), self.name_line_edit.text(), "augmented_data"
+            )
+            from libs.dataAug import dataAugmentation
+            aug = dataAugmentation(
+                yaml_file=file_dir,
+                save_dir=save_dir,
+                shuffle_char=self.enable_shuffle_check.isChecked(),
+                increased=int(self.aug_strength.text()),
+                shuffle_groups=self.settings.get(
+                    get_yaml_keys(self.data_line.line_edit.text()), {}
                 )
+            )
 
-                # 更新训练数据路径为增强后的数据
-                self.data_line.line_edit.setText(os.path.join(save_dir, "data.yaml"))
+            # 2) 创建工作者和线程
+            self.aug_thread = QtCore.QThread(self)  # 注意:要给 self 以免被垃圾回收
+            self.aug_worker = AugWorker(aug)  # 把上面写的 Worker 类放进来
+            self.aug_worker.moveToThread(self.aug_thread)  # Worker移动到子线程
 
-            except Exception as e:
-                QtWidgets.QMessageBox.critical(self, "数据增强错误", f"执行数据增强时出错：{str(e)}")
-                return
+            # 3) 连接信号槽
+            # 当子线程启动时，调用 Worker.run
+            self.aug_thread.started.connect(self.aug_worker.run)
+            # 当 Worker 报告进度时，调用 on_aug_progress
+            self.aug_worker.progressChanged.connect(self.on_aug_progress)
+            # 当 Worker 出错时，调用 on_aug_error
+            self.aug_worker.errorOccurred.connect(self.on_aug_error)
+            # 当 Worker 完成时，调用 on_aug_finished
+            self.aug_worker.finished.connect(self.on_aug_finished)
+            # 完成后，退出并清理线程
+            self.aug_worker.finished.connect(self.aug_thread.quit)
+            self.aug_worker.finished.connect(self.aug_worker.deleteLater)
+            self.aug_thread.finished.connect(self.aug_thread.deleteLater)
 
-        # 运行训练命令
+            # 4) 启动线程
+            self.aug_thread.start()
+
+            # 让进度条归零，并且避免用户多次点击
+            self.progress_bar.setValue(0)
+            self.progress_bar.setFormat("开始数据增强...")
+            self.progress_bar.setMaximum(100)  # 先假设 100，后面在 on_aug_progress 里再动态修正
+            # 如果你想禁用按钮防止重复点击，也可以：
+            # start_training_button.setEnabled(False)
+
+        else:
+            # 没勾选数据增强，那就正常继续训练即可
+            self.run_train_command()
+
+    def on_aug_progress(self, current, total, img_path):
+        """子线程实时发回的数据增强进度。"""
+        if total == 0:
+            return
+        percent = int(current * 100 / total)
+        self.progress_bar.setValue(percent)
+        self.progress_bar.setFormat(f"数据增强中：{percent}% （{current}/{total}）")
+
+    def on_aug_error(self, error_msg):
+        """数据增强出现异常时。"""
+        QtWidgets.QMessageBox.critical(self, "数据增强错误", f"执行数据增强时出错：{error_msg}")
+
+    def on_aug_finished(self):
+        """数据增强完成后，继续后续训练流程。"""
+        self.progress_bar.setValue(100)
+        self.progress_bar.setFormat("数据增强完成！")
+        # 这里就可以执行后续训练命令了
+        # 比如：
+        tmp = self.data_line.line_edit.text()
+        save_dir = os.path.join(self.save_dir_line.line_edit.text(),
+                                self.name_line_edit.text(), "augmented_data")
+        self.data_line.line_edit.setText(os.path.join(save_dir, "data.yaml"))
+        self.generate_run_command()
+        self.data_line.line_edit.setText(tmp)
         self.run_in_terminal(self.run_command_line.text())
+
+        # 如果有按钮需要恢复可用，也可以：
+        # start_training_button.setEnabled(True)
+
+    def run_train_command(self):
+        """不做数据增强时，直接执行训练。"""
+        self.generate_run_command()
+        self.run_in_terminal(self.run_command_line.text())
+
+    def show_shuffle_group_dialog(self):
+        # 打开对话框之前，先确保能拿到 data.yaml 中的 names
+        yaml_path = self.data_line.line_edit.text()
+        dialog = ShuffleGroupDialog(self, self.settings, yaml_path)
+        dialog.exec_()  # 模态方式打开
+        # 在对话框关闭后，分组信息已经保存在 self.settings["shuffle_groups"] 中
+        # 你可以在这之后做一些更新 UI 或者其他操作
+        # print(self.settings.get("shuffle_groups", {}))
 
     def closeEvent(self, a0):
         self.settings['data_config_path'] = self.data_line.line_edit.text()
@@ -523,12 +331,9 @@ class MainWindow(QMainWindow):
         self.settings['enable_aug'] = self.enable_aug_check.isChecked()
         self.settings['enable_shuffle'] = self.enable_shuffle_check.isChecked()
         self.settings['aug_strength'] = self.aug_strength.text()
-        self.settings['valid_ratio'] = self.valid_ratio.text()
-        self.settings['test_ratio'] = self.test_ratio.text()
         self.settings.save()
 
-
-    def run_in_terminal(self,command):
+    def run_in_terminal(self, command):
         # 获取脚本所在的目录
         script_dir = os.path.dirname(self.train_py_line.line_edit.text())
         # 在macOS中
@@ -541,10 +346,12 @@ class MainWindow(QMainWindow):
             subprocess.Popen(['open', '-a', 'Terminal.app', f.name])
         # 在Windows中
         elif sys.platform == 'win32':
-            subprocess.Popen(['start', 'cmd', '/k', 'cd /d ' + script_dir + ' && ' + command], shell=True)
+            subprocess.Popen(['start', 'cmd', '/k', 'cd /d ' +
+                             script_dir + ' && ' + command], shell=True)
         # 在Linux中（需要xterm）
         elif 'linux' in sys.platform:
-            subprocess.Popen(['xterm', '-e', 'cd ' + script_dir + ' && ' + command])
+            subprocess.Popen(
+                ['xterm', '-e', 'cd ' + script_dir + ' && ' + command])
         else:
             print("Unsupported platform")
 
@@ -554,7 +361,8 @@ def get_conda_env_python_path(env_name):
     try:
         print('1111')
         # 使用conda命令行接口获取环境信息
-        result = subprocess.run(['conda', 'env', 'list'], stdout=subprocess.PIPE, check=True)
+        result = subprocess.run(
+            ['conda', 'env', 'list'], stdout=subprocess.PIPE, check=True)
         # 解析结果
         lines = result.stdout.decode().split('\n')
         for line in lines:
@@ -571,7 +379,12 @@ def get_conda_env_python_path(env_name):
 def get_all_conda_envs():
     try:
         # 使用批处理脚本获取环境信息
-        result = subprocess.run(['cmd', '/c', 'get_conda_envs.bat'], stdout=subprocess.PIPE, check=True)
+        if sys.platform == 'win32':
+            result = subprocess.run(
+                ['cmd', '/c', 'get_conda_envs.bat'], stdout=subprocess.PIPE, check=True)
+        else:
+            result = subprocess.run(
+                ['bash', 'get_conda_envs.sh'], stdout=subprocess.PIPE, check=True)
         # 解析结果
         lines = result.stdout.decode().split('\n')
         envs = []
