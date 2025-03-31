@@ -351,19 +351,20 @@ class MainWindow(QMainWindow):
         self.settings['aug_strength'] = self.aug_strength.text()
         self.settings.save()
 
-    def run_in_terminal(self, command):
-        """在终端中运行命令"""
-        # 在 macOS 中
-        if sys.platform == 'darwin':
-            subprocess.Popen(['open', '-a', 'Terminal.app', '-e', f"{command}"], shell=True)
-        # 在 Windows 中
-        elif sys.platform == 'win32':
-            subprocess.Popen(['start', 'cmd', '/k', command], shell=True)
-        # 在 Linux 中
-        elif 'linux' in sys.platform:
-            subprocess.Popen(['xterm', '-e', command], shell=True)
-        else:
-            print("Unsupported platform")
+        def run_in_terminal(self, command):
+            """在指定的 Conda 环境中运行命令"""
+            conda_env_name = self.conda_env_combobox.currentText()  # 获取当前选择的 Conda 环境名称
+        
+            if sys.platform == 'win32':
+                # Windows 平台
+                full_command = f'cmd /k "conda activate {conda_env_name} && {command}"'
+                subprocess.Popen(full_command, shell=True)
+            elif sys.platform == 'darwin' or 'linux' in sys.platform:
+                # macOS 或 Linux 平台
+                full_command = f'"conda activate {conda_env_name} && {command}"'
+                subprocess.Popen(full_command, shell=True)
+            else:
+                print("Unsupported platform")
 
     def check_package_async(self):
         """使用多进程异步检查环境"""
