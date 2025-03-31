@@ -2,7 +2,7 @@ from functools import lru_cache
 import random
 
 import yaml
-from PyQt5 import QtWidgets, QtGui
+from PyQt5 import QtWidgets, QtGui, QtCore
 from PyQt5.QtWidgets import QWidget, QLabel, QMainWindow, QHBoxLayout, QRadioButton, QComboBox, QLineEdit
 
 from libs.LineWidget import LineWidget
@@ -14,8 +14,11 @@ import subprocess
 import os
 import sys
 import tempfile
+import multiprocessing
+from PyQt5.QtWidgets import QDialog, QVBoxLayout, QProgressBar, QMessageBox
 
 from ShuffleGroupDialog import ShuffleGroupDialog, get_yaml_keys
+from libs.check_env import LoadingDialog,check_environment
 
 
 class MainWindow(QMainWindow):
@@ -40,7 +43,7 @@ class MainWindow(QMainWindow):
         if self.envs:
             for env in self.envs:
                 self.conda_env_combobox.addItem(env[0])
-                
+
         conda_env_hbox = QHBoxLayout()
         conda_env_hbox.addWidget(QLabel('Conda环境'))
         conda_env_hbox.addWidget(self.conda_env_combobox)
@@ -217,9 +220,14 @@ class MainWindow(QMainWindow):
             '0' if self.use_gpu_button.isChecked() else 'cpu', '' if self.not_resume_button.isChecked() else '--resume', self.save_dir_line.line_edit.text(), self.name_line_edit.text())
         self.run_command_line.setText(run_command)
 
+    def check_package(self):
+        self.check_package_async()
+
     def start_training(self):
         # 0. 如果你之前有别的校验、获取路径、生成命令等逻辑，这里都不变...
         #    这里只演示如何把数据增强放到子线程中执行 + 进度条
+        if not self.check_package():
+            return
 
         if self.enable_aug_check.isChecked():
             # 1) 创建并配置 dataAugmentation 对象
@@ -263,7 +271,8 @@ class MainWindow(QMainWindow):
             # 让进度条归零，并且避免用户多次点击
             self.progress_bar.setValue(0)
             self.progress_bar.setFormat("开始数据增强...")
-            self.progress_bar.setMaximum(100)  # 先假设 100，后面在 on_aug_progress 里再动态修正
+            # 先假设 100，后面在 on_aug_progress 里再动态修正
+            self.progress_bar.setMaximum(100)
             # 如果你想禁用按钮防止重复点击，也可以：
             # start_training_button.setEnabled(False)
 
@@ -281,7 +290,8 @@ class MainWindow(QMainWindow):
 
     def on_aug_error(self, error_msg):
         """数据增强出现异常时。"""
-        QtWidgets.QMessageBox.critical(self, "数据增强错误", f"执行数据增强时出错：{error_msg}")
+        QtWidgets.QMessageBox.critical(
+            self, "数据增强错误", f"执行数据增强时出错：{error_msg}")
 
     def on_aug_finished(self):
         """数据增强完成后，继续后续训练流程。"""
@@ -355,6 +365,54 @@ class MainWindow(QMainWindow):
         else:
             print("Unsupported platform")
 
+    def check_package_async(self):
+        """使用多进程异步检查环境"""
+        # 获取当前 Conda 环境的 Python 路径
+        conda_env_path = self.envs[self.conda_env_combobox.currentIndex()][1]
+        python_path = os.path.join(conda_env_path, 'bin', 'python')
+        required_packages = ['torch','ultralytics']
+
+        # 创建加载对话框
+        self.loading_dialog = LoadingDialog(self)
+        self.loading_dialog.show()
+
+        # 创建管道用于主进程和子进程通信
+        parent_conn, child_conn = multiprocessing.Pipe()
+
+        # 创建子进程
+        self.check_process = multiprocessing.Process(
+            target=check_environment,
+            args=(python_path, required_packages, child_conn)
+        )
+
+        # 启动子进程
+        self.check_process.start()
+
+        # 检查子进程状态
+        self.timer = QtCore.QTimer(self)
+        self.timer.timeout.connect(lambda: self.poll_check_result(parent_conn))
+        self.timer.start(100)  # 每 100 毫秒检查一次
+
+    def poll_check_result(self, conn):
+        """轮询检查子进程的结果"""
+        if conn.poll():  # 如果子进程有结果返回
+            missing_packages = conn.recv()
+            self.timer.stop()
+            self.check_process.join()
+            self.loading_dialog.close()
+
+            if missing_packages:
+                QMessageBox.critical(
+                    self, "环境检查失败",
+                    f"当前 Conda 环境缺少以下必要库或配置不正确：\n{', '.join(missing_packages)}\n"
+                    "请安装后再尝试运行训练。"
+                )
+            else:
+                QMessageBox.information(
+                    self, "环境检查成功", "所有必要库已安装，可以开始训练！"
+                )
+                self.start_training()  # 开始训练
+
 
 @lru_cache(maxsize=5)
 def get_conda_env_python_path(env_name):
@@ -410,3 +468,5 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+
