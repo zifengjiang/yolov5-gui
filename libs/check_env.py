@@ -53,33 +53,7 @@ class LoadingDialog(QDialog):
         self.setLayout(layout)
 
 
-def check_package_async(self):
-    """使用多进程异步检查环境"""
-    # 获取当前 Conda 环境的 Python 路径
-    conda_env_path = self.envs[self.conda_env_combobox.currentIndex()][1]
-    python_path = os.path.join(conda_env_path, 'bin', 'python')
-    required_packages = ['torch', 'numpy', 'opencv-python']
 
-    # 创建加载对话框
-    self.loading_dialog = LoadingDialog(self)
-    self.loading_dialog.show()
-
-    # 创建管道用于主进程和子进程通信
-    parent_conn, child_conn = multiprocessing.Pipe()
-
-    # 创建子进程
-    self.check_process = multiprocessing.Process(
-        target=check_environment,
-        args=(python_path, required_packages, child_conn)
-    )
-
-    # 启动子进程
-    self.check_process.start()
-
-    # 检查子进程状态
-    self.timer = QtCore.QTimer(self)
-    self.timer.timeout.connect(lambda: self.poll_check_result(parent_conn))
-    self.timer.start(100)  # 每 100 毫秒检查一次
 
 
 def poll_check_result(self, conn):

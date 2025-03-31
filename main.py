@@ -29,14 +29,14 @@ class MainWindow(QMainWindow):
         self.settings.load()
         self.data_line = LineWidget('数据集配置路径', self.settings.get('data_config_path'),
                                     "YoloV5 Data Config (%s)" % ' '.join(['*.yaml']))
-        self.model_cfg_line = LineWidget('模型配置路径', self.settings.get('model_config_path'),
-                                         "YoloV5 Model Config (%s)" % ' '.join(['*.yaml']))
+                    
         self.pretrained_line = LineWidget('预训练模型路径', self.settings.get('pretrained_model_path'),
                                           "YoloV5 Pretrained Model (%s)" % ' '.join(['*.pt']))
         self.save_dir_line = LineWidget(
             '训练结果保存路径', self.settings.get('save_dir', os.path.expanduser('~')))
         # 创建一个横向布局，左边是文本，右边是一个下拉框，用于选择Conda环境
         self.conda_env_combobox = QComboBox(self)
+        self.is_env_setted = False
         # 获取所有Conda环境
         self.envs = get_all_conda_envs()
         if self.envs:
@@ -79,8 +79,6 @@ class MainWindow(QMainWindow):
         self.conda_env_combobox.setCurrentText(
             self.settings.get('conda_env_name'))
         self.data_line.line_edit.setText(self.settings.get('data_config_path'))
-        self.model_cfg_line.line_edit.setText(
-            self.settings.get('model_config_path'))
         self.pretrained_line.line_edit.setText(
             self.settings.get('pretrained_model_path'))
         self.save_dir_line.line_edit.setText(
@@ -88,7 +86,6 @@ class MainWindow(QMainWindow):
         layout = QtWidgets.QVBoxLayout()
         layout.addWidget(self.pretrained_line)
         layout.addWidget(self.data_line)
-        layout.addWidget(self.model_cfg_line)
         layout.addWidget(self.save_dir_line)
 
         layout.addWidget(self.conda_name_line)
@@ -204,11 +201,14 @@ class MainWindow(QMainWindow):
 
         self.setCentralWidget(widget)
         self.setWindowTitle('YOLO训练工具')
-        self.setFixedSize(450, 700)
+        self.setFixedSize(450, 600)
         self.generate_run_command()
 
     def generate_run_command(self):
         """生成 yolo train 命令"""
+        conda_env_path = self.envs[self.conda_env_combobox.currentIndex()][1]
+        plus = '/bin/python' if sys.platform == 'darwin' else '/python.exe'
+        python_path = conda_env_path + plus
         data_path = self.data_line.line_edit.text()
         model_path = self.pretrained_line.line_edit.text()
         save_dir = self.save_dir_line.line_edit.text()
@@ -216,11 +216,11 @@ class MainWindow(QMainWindow):
         batch_size = self.batch_size_line.text()
         img_size = self.img_size_line.text()
         patience = self.patience_line.text()
-        resume = self.not_resume_button.isChecked()
-        device = 'cuda' if self.use_gpu_button.isChecked() else 'cpu'
+        resume = not self.not_resume_button.isChecked()
+        device = '0' if self.use_gpu_button.isChecked() else 'cpu'
 
         # 构建 yolo train 命令
-        run_command = f"yolo train data={data_path} model={model_path} epochs={epochs} batch={batch_size} imgsz={img_size} project={save_dir} name={self.name_line_edit.text()} patience={patience} resume={resume} device={device} "
+        run_command = f"{python_path} -c \"from ultralytics import YOLO; model = YOLO('{model_path}'); model.train(name=r'{save_dir}', data=r'{data_path}', epochs={epochs}, imgsz={img_size}, device='{device}', batch={batch_size}, patience={patience})\" "
         self.run_command_line.setText(run_command)
 
     def check_package(self):
@@ -236,7 +236,8 @@ class MainWindow(QMainWindow):
     def start_training(self):
         # 0. 如果你之前有别的校验、获取路径、生成命令等逻辑，这里都不变...
         #    这里只演示如何把数据增强放到子线程中执行 + 进度条
-        if not self.check_package():
+        if not self.is_env_setted:
+            self.check_package()
             return
 
         if self.enable_aug_check.isChecked():
@@ -335,7 +336,7 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, a0):
         self.settings['data_config_path'] = self.data_line.line_edit.text()
-        self.settings['model_config_path'] = self.model_cfg_line.line_edit.text()
+
         self.settings['pretrained_model_path'] = self.pretrained_line.line_edit.text()
         self.settings['batch_size'] = self.batch_size_line.text()
         self.settings['epochs'] = self.epochs_line.text()
@@ -351,17 +352,20 @@ class MainWindow(QMainWindow):
         self.settings['aug_strength'] = self.aug_strength.text()
         self.settings.save()
 
-        def run_in_terminal(self, command):
+    def run_in_terminal(self, command):
             """在指定的 Conda 环境中运行命令"""
             conda_env_name = self.conda_env_combobox.currentText()  # 获取当前选择的 Conda 环境名称
-        
+
             if sys.platform == 'win32':
                 # Windows 平台
-                full_command = f'cmd /k "conda activate {conda_env_name} && {command}"'
+                full_command = f'start cmd /k "{command}"'
                 subprocess.Popen(full_command, shell=True)
+                print(full_command)
+                # subprocess.Popen(['start', 'cmd', '/k', 'cd /d ' +
+                            #  script_dir + ' && ' + command], shell=True)
             elif sys.platform == 'darwin' or 'linux' in sys.platform:
                 # macOS 或 Linux 平台
-                full_command = f'"conda activate {conda_env_name} && {command}"'
+                full_command = f'"{command}"'
                 subprocess.Popen(full_command, shell=True)
             else:
                 print("Unsupported platform")
@@ -370,8 +374,9 @@ class MainWindow(QMainWindow):
         """使用多进程异步检查环境"""
         # 获取当前 Conda 环境的 Python 路径
         conda_env_path = self.envs[self.conda_env_combobox.currentIndex()][1]
-        python_path = os.path.join(conda_env_path, 'bin', 'python')
-        required_packages = ['torch','ultralytics']
+        plus = '/bin/python' if sys.platform == 'darwin' else '/python.exe'
+        python_path = conda_env_path + plus
+        required_packages = ['torch', 'ultralytics', 'cv2']
 
         # 创建加载对话框
         self.loading_dialog = LoadingDialog(self)
@@ -408,10 +413,12 @@ class MainWindow(QMainWindow):
                     f"当前 Conda 环境缺少以下必要库或配置不正确：\n{', '.join(missing_packages)}\n"
                     "请安装后再尝试运行训练。"
                 )
+
             else:
                 QMessageBox.information(
-                    self, "环境检查成功", "所有必要库已安装，可以开始训练！"
+                    self, "环境检查成功", "所有必要库已安装，开始训练！"
                 )
+                self.is_env_setted = True
                 self.start_training()  # 开始训练
 
 
